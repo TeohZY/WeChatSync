@@ -1,0 +1,2 @@
+# WeChatSync
+一个同步博客文章到微信公众号草稿箱的typecho插件
