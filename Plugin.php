@@ -4,7 +4,7 @@
  *
  * @package WeChatSync
  * @author TeohZY
- * @version 1.0.0
+ * @version 1.0.1
  * @link https://blog.teohzy.com
  */
 if (!defined('__TYPECHO_ROOT_DIR__')) exit;
