@@ -17,6 +17,7 @@ class WeChatSync_Action extends Typecho_Widget implements Widget_Interface_Do
             $db = Typecho_Db::get();
             foreach ($cids as $cid) {
                 try {
+                    error_log("\n render start \n",3,dirname(__FILE__) . "/cache/error.txt");
                     AsyncTask::render($cid); 
                 } catch (Exception $e) {
                         $logMessage = sprintf(
