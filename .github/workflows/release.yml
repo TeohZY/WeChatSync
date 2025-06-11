@@ -14,19 +14,19 @@ jobs:
 
       - name: Create ZIP archive
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          zip -r WeChatSync-$VERSION.zip .     # 打包整个项目为 ZIP
+          VERSION=${GITHUB_REF#refs/tags/}  # 这会提取出 v1.0.0
+          zip -r WeChatSync-$VERSION.zip .  # 打包整个项目为 ZIP
 
       - name: Create TAR.GZ archive
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION=${GITHUB_REF#refs/tags/}  # 这会提取出 v1.0.0
           tar -czvf WeChatSync-$VERSION.tar.gz .  # 打包整个项目为 TAR.GZ
 
       - name: Create Release
         id: create_release
         uses: actions/create-release@v1
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 自动使用 GitHub Token
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref }}
           release_name: Release ${{ github.ref }}
@@ -39,8 +39,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./WeChatSync-${{ github.ref }}.zip
-          asset_name: WeChatSync-${{ github.ref }}.zip
+          asset_path: ./WeChatSync-$VERSION.zip
+          asset_name: WeChatSync-$VERSION.zip
           asset_content_type: application/zip
 
       - name: Upload TAR.GZ to Release
@@ -49,6 +49,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./WeChatSync-${{ github.ref }}.tar.gz
-          asset_name: WeChatSync-${{ github.ref }}.tar.gz
+          asset_path: ./WeChatSync-$VERSION.tar.gz
+          asset_name: WeChatSync-$VERSION.tar.gz
           asset_content_type: application/gzip
