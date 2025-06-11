@@ -19,14 +19,15 @@ jobs:
             -x ".gitignore" \
             -x "*.DS_Store"  # 可选：排除 macOS 的 .DS_Store 文件
 
-      - name: Create TAR.GZ archive (excluding .git, .github, .gitignore)
+      - name: Create TAR.GZ archive (corrected)
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          tar -czvf WeChatSync-$VERSION.tar.gz . \
+          tar -czvf WeChatSync-$VERSION.tar.gz \
             --exclude=".git" \
             --exclude=".github" \
             --exclude=".gitignore" \
-            --exclude="*.DS_Store"  # 可选：排除 macOS 的 .DS_Store 文件
+            --exclude="*.DS_Store" \
+            .
 
       - name: Create Release
         id: create_release
