@@ -14,7 +14,8 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
     public static function activate()
     {
         // 注入 JavaScript 到 footer.php
-        Typecho_Plugin::factory('admin/footer.php')->end = array('WeChatSync_Plugin', 'addSyncAction');
+        $adminUrl = Helper::options()->adminUrl;
+        Typecho_Plugin::factory($adminUrl . 'footer.php')->end = array('WeChatSync_Plugin', 'addSyncAction');
         Helper::addAction('WeChatSync_action_plugin', 'WeChatSync_Action');
         return _t('插件已启用');
     }
