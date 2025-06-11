@@ -15,26 +15,31 @@ jobs:
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          mkdir -p ./artifacts  # 创建临时目录用于存储压缩文件
 
-      - name: Create ZIP archive (excluding .git, .github, .gitignore, and ZIP itself)
+      - name: Create ZIP archive
         run: |
-          zip -r WeChatSync-${{ env.VERSION }}.zip . \
+          zip -r ./artifacts/WeChatSync-${{ env.VERSION }}.zip . \
             -x ".git/*" \
             -x ".github/*" \
             -x ".gitignore" \
             -x "*.DS_Store" \
-            -x "WeChatSync-${{ env.VERSION }}.zip"
+            -x "artifacts/*"
 
-      - name: Create TAR.GZ archive (excluding .git, .github, .gitignore, ZIP, and TAR.GZ)
+      - name: Create TAR.GZ archive
         run: |
-          tar -czvf WeChatSync-${{ env.VERSION }}.tar.gz \
+          tar -czvf ./artifacts/WeChatSync-${{ env.VERSION }}.tar.gz \
             --exclude=".git" \
             --exclude=".github" \
             --exclude=".gitignore" \
             --exclude="*.DS_Store" \
-            --exclude="WeChatSync-${{ env.VERSION }}.zip" \
-            --exclude="WeChatSync-${{ env.VERSION }}.tar.gz" \
+            --exclude="artifacts/*" \
             .
+
+      - name: Verify Archives
+        run: |
+          ls -l ./artifacts/WeChatSync-${{ env.VERSION }}.zip
+          ls -l ./artifacts/WeChatSync-${{ env.VERSION }}.tar.gz
 
       - name: Create Release
         id: create_release
@@ -53,7 +58,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./WeChatSync-${{ env.VERSION }}.zip
+          asset_path: ./artifacts/WeChatSync-${{ env.VERSION }}.zip
           asset_name: WeChatSync-${{ env.VERSION }}.zip
           asset_content_type: application/zip
 
@@ -63,6 +68,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./WeChatSync-${{ env.VERSION }}.tar.gz
+          asset_path: ./artifacts/WeChatSync-${{ env.VERSION }}.tar.gz
           asset_name: WeChatSync-${{ env.VERSION }}.tar.gz
           asset_content_type: application/gzip
+
+      - name: Clean up
+        run: |
+          rm -rf ./artifacts
