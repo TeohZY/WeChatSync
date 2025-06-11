@@ -3,6 +3,7 @@ on:
   push:
     tags:
       - "v*"  # 匹配 v1.0.0, v2.3.4 等格式的标签
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -10,23 +11,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create ZIP archive (excluding .git, .github, .gitignore)
+      - name: Set up environment
         run: |
           VERSION=${GITHUB_REF#refs/tags/}
-          zip -r WeChatSync-$VERSION.zip . \
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Create ZIP archive (excluding .git, .github, .gitignore, and ZIP itself)
+        run: |
+          zip -r WeChatSync-${{ env.VERSION }}.zip . \
             -x ".git/*" \
             -x ".github/*" \
             -x ".gitignore" \
-            -x "*.DS_Store"  # 可选：排除 macOS 的 .DS_Store 文件
+            -x "*.DS_Store" \
+            -x "WeChatSync-${{ env.VERSION }}.zip"
 
-      - name: Create TAR.GZ archive (corrected)
+      - name: Create TAR.GZ archive (excluding .git, .github, .gitignore, ZIP, and TAR.GZ)
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}
-          tar -czvf WeChatSync-$VERSION.tar.gz \
+          tar -czvf WeChatSync-${{ env.VERSION }}.tar.gz \
             --exclude=".git" \
             --exclude=".github" \
             --exclude=".gitignore" \
             --exclude="*.DS_Store" \
+            --exclude="WeChatSync-${{ env.VERSION }}.zip" \
+            --exclude="WeChatSync-${{ env.VERSION }}.tar.gz" \
             .
 
       - name: Create Release
@@ -46,8 +53,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./WeChatSync-$VERSION.zip
-          asset_name: WeChatSync-$VERSION.zip
+          asset_path: ./WeChatSync-${{ env.VERSION }}.zip
+          asset_name: WeChatSync-${{ env.VERSION }}.zip
           asset_content_type: application/zip
 
       - name: Upload TAR.GZ to Release
@@ -56,6 +63,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./WeChatSync-$VERSION.tar.gz
-          asset_name: WeChatSync-$VERSION.tar.gz
+          asset_path: ./WeChatSync-${{ env.VERSION }}.tar.gz
+          asset_name: WeChatSync-${{ env.VERSION }}.tar.gz
           asset_content_type: application/gzip
