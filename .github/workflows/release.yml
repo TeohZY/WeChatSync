@@ -1,10 +1,8 @@
 name: Release with Archives
-
 on:
   push:
     tags:
       - "v*"  # 匹配 v1.0.0, v2.3.4 等格式的标签
-
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,15 +10,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Create ZIP archive
+      - name: Create ZIP archive (excluding .git, .github, .gitignore)
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}  # 这会提取出 v1.0.0
-          zip -r WeChatSync-$VERSION.zip .  # 打包整个项目为 ZIP
+          VERSION=${GITHUB_REF#refs/tags/}
+          zip -r WeChatSync-$VERSION.zip . \
+            -x ".git/*" \
+            -x ".github/*" \
+            -x ".gitignore" \
+            -x "*.DS_Store"  # 可选：排除 macOS 的 .DS_Store 文件
 
-      - name: Create TAR.GZ archive
+      - name: Create TAR.GZ archive (excluding .git, .github, .gitignore)
         run: |
-          VERSION=${GITHUB_REF#refs/tags/}  # 这会提取出 v1.0.0
-          tar -czvf WeChatSync-$VERSION.tar.gz .  # 打包整个项目为 TAR.GZ
+          VERSION=${GITHUB_REF#refs/tags/}
+          tar -czvf WeChatSync-$VERSION.tar.gz . \
+            --exclude=".git" \
+            --exclude=".github" \
+            --exclude=".gitignore" \
+            --exclude="*.DS_Store"  # 可选：排除 macOS 的 .DS_Store 文件
 
       - name: Create Release
         id: create_release
