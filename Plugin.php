@@ -13,8 +13,7 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
 {
     public static function activate()
     {
-        $adminFooterPath = ltrim(__TYPECHO_ADMIN_DIR__, '/') . 'footer.php';
-        Typecho_Plugin::factory($adminFooterPath)->end = array('WeChatSync_Plugin', 'addSyncAction');
+        Typecho_Plugin::factory("admin/footer.php")->end = array('WeChatSync_Plugin', 'addSyncAction');
         Helper::addAction('WeChatSync_action_plugin', 'WeChatSync_Action');
         return _t('插件已启用');
     }
@@ -150,6 +149,7 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
 
     public static function addSyncAction()
     {
+        echo '<script>console.log("WeChatSync Plugin loaded successfully!");</script>';
         $request = Typecho_Request::getInstance();
         if (strpos($request->getRequestUri(), __TYPECHO_ADMIN_DIR__ . 'manage-posts.php') !== false) {
             self::addManagePostsMenu();
