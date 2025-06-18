@@ -169,7 +169,7 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
         <script>
             $(document).ready(function() {
                 console.log("Dropdown menus found: ", $('.dropdown-menu').length);
-                const syncAction = '<li><a href="#" data-action="<?php $security = Typecho_Widget::widget("Widget_Security"); echo $security->index("/action/custom_action_plugin?do=custom_action"); ?>">发布公众号</a></li>';
+                const syncAction = '<li><a href="#" data-action="<?php $security = Typecho_Widget::widget("Widget_Security"); echo $security->index("/action/WeChatSync_action_plugin?do=custom_action"); ?>">发布公众号</a></li>';
                 $('.dropdown-menu').each(function() {
                     $(this).append(syncAction);
                 });
