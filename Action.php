@@ -14,27 +14,27 @@ class WeChatSync_Action extends Typecho_Widget implements Widget_Interface_Do
         $cids = $this->request->filter('int')->getArray('cid');
 
         if (!empty($cids) && $this->request->get('do') === 'custom_action') {
-            $db = Typecho_Db::get();
+            $successCount = 0;
+            $errors = [];
             foreach ($cids as $cid) {
                 try {
-                    error_log("\n render start \n",3,dirname(__FILE__) . "/cache/error.txt");
-                    AsyncTask::render($cid); 
+                    AsyncTask::render($cid);
+                    $successCount++;
                 } catch (Exception $e) {
-                        $logMessage = sprintf(
-                        "[%s] Exception: %s\nFile: %s (Line: %d)\nStack Trace:\n%s",
-                        date('Y-m-d H:i:s'),
-                        $e->getMessage(),       // 异常消息
-                        $e->getFile(),          // 异常文件
-                        $e->getLine(),          // 异常行号
-                        $e->getTraceAsString()  // 调用堆栈
-                    );
-                    error_log("\n " . $logMessage . "\n",3,dirname(__FILE__) . "/cache/error.txt");
+                    $errors[] = '文章 ' . $cid . '：' . $e->getMessage();
                 }
             }
 
-            // 设置成功提示并返回
-            $this->widget('Widget_Notice')->set(_t('已对 %d 篇文章执行自定义操作', count($cids)), 'success');
-            $this->response->goBack();
+            if (empty($errors)) {
+                $this->widget('Widget_Notice')->set(_t('已对 %d 篇文章执行自定义操作', $successCount), 'success');
+                $this->response->goBack();
+            } else {
+                $errorMsg = implode('；', $errors);
+                // 返回 500 错误状态码，让 AJAX 能捕捉到错误
+                $this->response->setStatus(500);
+                echo json_encode(['error' => $errorMsg]);
+                return;
+            }
         } else {
             $this->widget('Widget_Notice')->set(_t('请选择文章'), 'error');
             $this->response->goBack();
@@ -45,7 +45,12 @@ class WeChatSync_Action extends Typecho_Widget implements Widget_Interface_Do
 class AsyncTask{
     // 获取文章对象
     public static function getPost($cid){
-        return $post = Widget_Archive::alloc('type=post', 'cid=' . intval($cid));
+        $db = Typecho_Db::get();
+        $post = $db->fetchRow($db->select()->from('table.contents')
+            ->where('cid = ?', intval($cid))
+            ->where('type = ?', 'post')
+            ->where('status = ?', 'publish'));
+        return $post;
     }
 
     public static function getSetting(){
@@ -56,8 +61,14 @@ class AsyncTask{
     /* 获取微信access_token的方法 */
     public static function getAccessToken()
     {
+        // 确保缓存目录存在
+        $cacheDir = dirname(__FILE__) . '/cache';
+        if (!is_dir($cacheDir)) {
+            mkdir($cacheDir, 0755, true);
+        }
+
         // 检查缓存中是否存在access_token
-        $file = dirname(__FILE__) . '/cache/accessToken';
+        $file = $cacheDir . '/accessToken';
         $accessToken = file_exists($file) ? unserialize(file_get_contents($file)) : '';
         if (empty($accessToken) || self::isAccessTokenExpired($accessToken)) {
             // 如果缓存中不存在或已过期，重新请求获取access_token
@@ -112,7 +123,7 @@ class AsyncTask{
             $matching = null;
             foreach ($mediaList as $media) {
                 if ($media->name == "typecho.jpg") {
-                    $matching = $entry;
+                    $matching = $media;
                     break;
                 }
             }
@@ -186,6 +197,8 @@ class AsyncTask{
         curl_setopt($ch, CURLOPT_URL, $url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
         curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false); // 忽略 SSL 证书验证
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
         if ($ispost) {
             // POST 请求
             curl_setopt($ch, CURLOPT_POST, true);
@@ -208,16 +221,35 @@ class AsyncTask{
         }
 
         $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
         curl_close($ch);
-        $responseData = json_decode($response);
-        if (!isset($responseData->errmsg)) {
-            return $responseData;
-        } else {
-            // 请求失败，处理错误信息
-            throw new Exception($responseData->errmsg);
+
+        // 检查 curl 是否有错误
+        if ($response === false || !empty($curlError)) {
+            throw new Exception('CURL 错误：' . $curlError);
         }
+
+        // 检查 HTTP 状态码
+        if ($httpCode !== 200) {
+            throw new Exception('HTTP 错误：状态码 ' . $httpCode . '，响应：' . $response);
+        }
+
+        $responseData = json_decode($response);
+
+        // 检查返回数据是否有效
+        if ($responseData === null && json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception('JSON 解析失败：' . json_last_error_msg() . '，响应：' . $response);
+        }
+
+        if (isset($responseData->errcode) && $responseData->errcode !== 0) {
+            // 微信返回错误
+            throw new Exception('微信 API 错误：' . $responseData->errmsg . ' (错误码：' . $responseData->errcode . ')');
+        }
+
+        return $responseData;
     }
-    public static function codeHightLight($text){
+    public static function codeHighlight($text){
         $text = preg_replace_callback(
             '/<pre><code(?: class="language-(.*?)")?>(.*?)<\/code><\/pre>/s',
             function ($matches) {
@@ -257,14 +289,14 @@ class AsyncTask{
     public static function formatHtmlWithDOM($html) {
         // 创建 DOMDocument 实例
         $dom = new DOMDocument('1.0', 'UTF-8');  // 设置编码为 UTF-8
-    
+
         // 处理HTML错误
         libxml_use_internal_errors(true);
-    
+
         // 加载HTML内容，并强制指定 UTF-8 编码
         $html = mb_convert_encoding($html, 'HTML-ENTITIES', 'UTF-8');  // 转换为HTML实体
         $dom->loadHTML($html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-    
+
         // 清理 DOMDocument 中的多余空格
         $xpath = new DOMXPath($dom);
         foreach ($xpath->query('//text()') as $textNode) {
@@ -273,7 +305,7 @@ class AsyncTask{
                 $textNode->nodeValue = trim(preg_replace('/\s+/', ' ', $textNode->nodeValue));
             }
         }
-    
+
         // 处理 style 和 class 属性中的多余空格
         foreach ($dom->getElementsByTagName('*') as $element) {
             if ($element->hasAttribute('style')) {
@@ -285,15 +317,15 @@ class AsyncTask{
                 $element->setAttribute('class', preg_replace('/\s+/', ' ', $class));
             }
         }
-    
+
         // 输出格式化后的HTML，确保保存为 UTF-8 编码
         return mb_convert_encoding($dom->saveHTML(), 'UTF-8', 'HTML-ENTITIES');
     }
 
     /* 格式化标签 */
-    public static function ParseCode($text)
+    public static function parseCode($text)
     {
-        $text = self::codeHightLight($text);
+        $text = self::codeHighlight($text);
         return $text;
     }
 
@@ -301,13 +333,13 @@ class AsyncTask{
     {
         // 重新赋值给$text
         $text = str_replace("<!--markdown-->", "", $text);
-        
+
         // 实例化Parsedown对象
         $parsedown = new CustomParsedown();
-        
+
         // 将Markdown转换为HTML
         $htmlContent = $parsedown->text($text);
-        $htmlContent = self::ParseCode($htmlContent);
+        $htmlContent = self::parseCode($htmlContent);
         // 返回处理后的内容
 
         $htmlContent = '<section id="nice" data-tool="markdown编辑器" data-website="https://markdown.com.cn/editor"
@@ -338,7 +370,6 @@ style="font-size: 16px; color: black; padding: 25px 30px; line-height: 1.6; word
 
         // 获取路由规则
         $postPattern = $options->routingTable['post']['url'];
-        error_log("\n url options". json_encode($postPattern) ."\n",3,dirname(__FILE__) . "/cache/error.txt");
 
         // 替换路由中的占位符
         $permalink = $postPattern;
@@ -352,7 +383,7 @@ style="font-size: 16px; color: black; padding: 25px 30px; line-height: 1.6; word
         // 拼接站点根 URL
         return rtrim($options->siteUrl, '/') . '/' . ltrim($permalink, '/');
     }
-    
+
     /* 插件实现方法 */
     public static function render($cid){
         $setting = self::getSetting();
@@ -362,25 +393,65 @@ style="font-size: 16px; color: black; padding: 25px 30px; line-height: 1.6; word
         if (empty($author)) {
             $user = Typecho_Widget::widget('Widget_User');
             $author = $user->screenName;
-        } 
-        if (empty($post->password) && strlen($post->text) > 100 && $setting->appid && $setting->secret) {
-            $accessToken = self::getAccessToken();
-            $url = 'https://api.weixin.qq.com/cgi-bin/draft/add?access_token='.$accessToken;
-            $mediaId = self::uploadCover($cid);
-            $html = html_entity_decode(self::uploadImageToWeChat($post->text), ENT_QUOTES, 'UTF-8');
-            $array = [
-                "articles"=>[
-                    [
-                        "title"=>$post->title,
-                        "author"=>$author,
-                        "content"=>$html,
-                        "content_source_url"=>$post->permalink,
-                        "thumb_media_id"=>$mediaId,
-                        "digest" => $post->fields->$abstractField
-                    ]
-                ]
-            ];
-            self::curl($url,json_encode($array, JSON_UNESCAPED_UNICODE),true);
         }
+
+        // 检查文章是否存在
+        if (empty($post) || !isset($post['text'])) {
+            throw new Exception('文章不存在或内容为空');
+        }
+
+        // 检查密码保护
+        if (!empty($post['password'])) {
+            throw new Exception('受保护的文章无法同步');
+        }
+
+        // 检查文章内容长度
+        if (strlen($post['text']) <= 100) {
+            throw new Exception('文章内容太短，无法同步');
+        }
+
+        // 检查微信配置
+        if (empty($setting->appid) || empty($setting->secret)) {
+            throw new Exception('请先配置微信公众号的AppId和Secret');
+        }
+
+        // 获取文章摘要
+        $db = Typecho_Db::get();
+        $abstractRow = $db->fetchRow($db->select('str_value')
+            ->from('table.fields')
+            ->where('cid = ?', intval($cid))
+            ->where('name = ?', $abstractField));
+        $digest = $abstractRow ? $abstractRow['str_value'] : '';
+
+        // 获取文章标题
+        $title = isset($post['title']) ? $post['title'] : '';
+
+        // 获取文章链接
+        $permalink = self::getPermalinkByCid($cid);
+
+        $accessToken = self::getAccessToken();
+        $url = 'https://api.weixin.qq.com/cgi-bin/draft/add?access_token='.$accessToken;
+        $mediaId = self::uploadCover($cid);
+        $html = html_entity_decode(self::uploadImageToWeChat($post['text']), ENT_QUOTES, 'UTF-8');
+        $array = [
+            "articles"=>[
+                [
+                    "title"=>$title,
+                    "author"=>$author,
+                    "content"=>$html,
+                    "content_source_url"=>$permalink,
+                    "thumb_media_id"=>$mediaId,
+                    "digest" => $digest
+                ]
+            ]
+        ];
+        $result = self::curl($url,json_encode($array, JSON_UNESCAPED_UNICODE),true);
+
+        // curl 已经检查过错误，这里直接获取结果
+        if (!isset($result->media_id)) {
+            throw new Exception('发布失败：未获取到 media_id');
+        }
+
+        return $result->media_id;
     }
 }

@@ -50,66 +50,151 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
                 continue;
             }
             $path = $cacheDir . '/' . $item;
-            if (is_file($path)) {
+            if (is_dir($path)) {
+                self::removeDir($path);
+            } elseif (is_file($path)) {
                 @unlink($path);
             }
         }
+    }
+
+    private static function removeDir($dir)
+    {
+        $items = scandir($dir);
+        foreach ($items as $item) {
+            if ($item === '.' || $item === '..') {
+                continue;
+            }
+            $path = $dir . '/' . $item;
+            if (is_dir($path)) {
+                self::removeDir($path);
+            } else {
+                @unlink($path);
+            }
+        }
+        @rmdir($dir);
     }
 
     private static function getLoadingStyles()
     {
         ?>
         <style>
-            .loading-overlay {
+            .wcs-loading-overlay {
                 position: fixed;
                 top: 0;
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(0,0,0,0.5);
+                background: rgba(0,0,0,0.7);
                 display: none;
-                z-index: 1000;
+                z-index: 10000;
                 justify-content: center;
                 align-items: center;
+                backdrop-filter: blur(4px);
             }
-            .loading-content{
-                width: 100%;
-                height: 100%;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-                gap: 20px;
-            }
-            .spinner {
-                border: 4px solid #f3f3f3;
-                border-top: 4px solid #3498db;
-                border-radius: 50%;
-                width: 40px;
-                height: 40px;
-                animation: spin 1s linear infinite;
-            }
-            .progress-container {
-                width: 300px;
-                background: #f3f3f3;
-                border-radius: 5px;
-                margin-top: 10px;
-            }
-            .progress-bar {
-                width: 0%;
-                height: 20px;
-                background: #3498db;
-                border-radius: 5px;
-                transition: width 0.3s;
-            }
-            @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
-            }
-            .info-text {
-                color: #fff;
-                font-size: 16px;
+            .wcs-loading-card {
+                background: linear-gradient(145deg, #ffffff, #f5f5f5);
+                border-radius: 16px;
+                padding: 40px 50px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
                 text-align: center;
+                max-width: 400px;
+            }
+            .wcs-icon {
+                width: 80px;
+                height: 80px;
+                margin: 0 auto 24px;
+                background: linear-gradient(135deg, #07c160, #06ad56);
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 8px 24px rgba(7, 193, 96, 0.4);
+            }
+            .wcs-icon svg {
+                width: 48px;
+                height: 48px;
+                fill: white;
+            }
+            .wcs-title {
+                font-size: 20px;
+                font-weight: 600;
+                color: #333;
+                margin-bottom: 8px;
+            }
+            .wcs-step {
+                font-size: 14px;
+                color: #999;
+                margin-bottom: 24px;
+                min-height: 20px;
+            }
+            .wcs-progress-container {
+                width: 100%;
+                height: 6px;
+                background: #e8e8e8;
+                border-radius: 3px;
+                overflow: hidden;
+                margin-bottom: 16px;
+            }
+            .wcs-progress-bar {
+                width: 0%;
+                height: 100%;
+                background: linear-gradient(90deg, #07c160, #10b040);
+                border-radius: 3px;
+                transition: width 0.4s ease;
+            }
+            .wcs-steps-list {
+                text-align: left;
+                margin: 0;
+                padding: 0 10px;
+                list-style: none;
+            }
+            .wcs-steps-list li {
+                display: flex;
+                align-items: center;
+                padding: 8px 0;
+                font-size: 14px;
+                color: #999;
+                transition: all 0.3s;
+            }
+            .wcs-steps-list li.active {
+                color: #07c160;
+                font-weight: 500;
+            }
+            .wcs-steps-list li.done {
+                color: #999;
+            }
+            .wcs-steps-list li .wcs-step-icon {
+                width: 20px;
+                height: 20px;
+                border-radius: 50%;
+                border: 2px solid currentColor;
+                margin-right: 12px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
+                flex-shrink: 0;
+            }
+            .wcs-steps-list li.active .wcs-step-icon {
+                background: #07c160;
+                border-color: #07c160;
+                color: white;
+            }
+            .wcs-steps-list li.done .wcs-step-icon {
+                background: #07c160;
+                border-color: #07c160;
+                color: white;
+            }
+            .wcs-steps-list li.done .wcs-step-icon::after {
+                content: "✓";
+            }
+            @keyframes wcs-pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+            }
+            .wcs-loading-card.loading .wcs-icon {
+                animation: wcs-pulse 1.5s ease-in-out infinite;
             }
         </style>
         <?php
@@ -120,13 +205,50 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
         ?>
         <script>
             function handleAjaxProgress() {
-                $('#loading-overlay').fadeIn();
-                let progress = 0;
+                $('#wcs-loading-overlay').fadeIn();
+
+                // 设置步骤
+                const steps = [
+                    { id: 'step-token', text: '获取访问令牌' },
+                    { id: 'step-cover', text: '上传封面图片' },
+                    { id: 'step-content', text: '处理文章内容' },
+                    { id: 'step-images', text: '上传文章图片' },
+                    { id: 'step-submit', text: '提交到公众号' }
+                ];
+
+                let currentStep = 0;
+
+                function updateStep(stepIndex) {
+                    steps.forEach((step, index) => {
+                        const li = $('#' + step.id).closest('li');
+                        li.removeClass('active done');
+                        if (index < stepIndex) {
+                            li.addClass('done');
+                        } else if (index === stepIndex) {
+                            li.addClass('active');
+                        }
+                    });
+                    const progress = ((stepIndex + 1) / steps.length) * 100;
+                    $('#wcs-progress-bar').css('width', progress + '%');
+                }
+
+                updateStep(0);
+
                 const progressInterval = setInterval(() => {
-                    progress = Math.min(progress + 10, 90);
-                    $('#progress-bar').css('width', progress + '%');
-                }, 500);
+                    if (currentStep < steps.length - 1) {
+                        currentStep++;
+                        updateStep(currentStep);
+                    } else {
+                        clearInterval(progressInterval);
+                    }
+                }, 1500);
+
                 return progressInterval;
+            }
+
+            function resetLoadingState() {
+                $('#wcs-progress-bar').css('width', '0%');
+                $('.wcs-steps-list li').removeClass('active done');
             }
         </script>
         <?php
@@ -135,13 +257,25 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
     private static function getLoadingHtml()
     {
         ?>
-        <div class="loading-overlay" id="loading-overlay" style="display: none;">
-            <div class="loading-content">
-                <div class="spinner"></div>
-                <div class="progress-container">
-                    <div class="progress-bar" id="progress-bar"></div>
+        <div class="wcs-loading-overlay" id="wcs-loading-overlay">
+            <div class="wcs-loading-card loading">
+                <div class="wcs-icon">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.665l-.39 1.48c-.019.07-.048.141-.048.213 0 .163.13.295.29.295a.326.326 0 0 0 .167-.054l1.903-1.114a.864.864 0 0 1 .717-.098 10.16 10.16 0 0 0 2.837.403c.276 0 .543-.027.811-.05-.857-2.578.157-4.972 1.932-6.446 1.703-1.415 3.882-1.98 5.853-1.838-.576-3.583-4.196-6.348-8.596-6.348zM5.785 5.991c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178A1.17 1.17 0 0 1 4.623 7.17c0-.651.52-1.18 1.162-1.18zm5.813 0c.642 0 1.162.529 1.162 1.18a1.17 1.17 0 0 1-1.162 1.178 1.17 1.17 0 0 1-1.162-1.178c0-.651.52-1.18 1.162-1.18zm5.34 2.867c-1.797-.052-3.746.512-5.28 1.786-1.72 1.428-2.687 3.72-1.78 6.22.942 2.453 3.666 4.229 6.884 4.229.826 0 1.622-.12 2.361-.336a.722.722 0 0 1 .598.082l1.584.926a.272.272 0 0 0 .14.047c.134 0 .24-.11.24-.245 0-.06-.024-.12-.04-.178l-.327-1.233a.582.582 0 0 1-.023-.156.49.49 0 0 1 .201-.398C23.024 18.48 24 16.82 24 14.98c0-3.21-2.931-5.837-6.656-6.088V8.87c-.135-.004-.272-.012-.407-.012zm-2.53 3.274c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.97-.982zm4.844 0c.535 0 .969.44.969.982a.976.976 0 0 1-.969.983.976.976 0 0 1-.969-.983c0-.542.434-.982.969-.982z"/>
+                    </svg>
                 </div>
-                <div class="info-text">上传中请稍等...</div>
+                <div class="wcs-title">正在同步到公众号</div>
+                <div class="wcs-step" id="wcs-current-step">准备中...</div>
+                <div class="wcs-progress-container">
+                    <div class="wcs-progress-bar" id="wcs-progress-bar"></div>
+                </div>
+                <ul class="wcs-steps-list">
+                    <li><span class="wcs-step-icon">1</span><span id="step-token">获取访问令牌</span></li>
+                    <li><span class="wcs-step-icon">2</span><span id="step-cover">上传封面图片</span></li>
+                    <li><span class="wcs-step-icon">3</span><span id="step-content">处理文章内容</span></li>
+                    <li><span class="wcs-step-icon">4</span><span id="step-images">上传文章图片</span></li>
+                    <li><span class="wcs-step-icon">5</span><span id="step-submit">提交到公众号</span></li>
+                </ul>
             </div>
         </div>
         <?php
@@ -198,16 +332,26 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
                         },
                         success: function(response) {
                             clearInterval(progressInterval);
-                            $('#progress-bar').css('width', '100%');
+                            $('#wcs-progress-bar').css('width', '100%');
+                            $('#wcs-current-step').text('同步完成！');
                             setTimeout(() => {
-                                $('#loading-overlay').fadeOut();
+                                $('#wcs-loading-overlay').fadeOut();
+                                resetLoadingState();
                                 window.location.reload();
-                            }, 500);
+                            }, 800);
                         },
                         error: function(xhr) {
                             clearInterval(progressInterval);
-                            $('#loading-overlay').fadeOut();
-                            alert('<?php _e("操作失败：") ?>' + xhr.status + ' ' + xhr.statusText);
+                            $('#wcs-loading-overlay').fadeOut();
+                            resetLoadingState();
+                            let errorMsg = xhr.status + ' ' + xhr.statusText;
+                            try {
+                                const resp = JSON.parse(xhr.responseText);
+                                if (resp.error) {
+                                    errorMsg = resp.error;
+                                }
+                            } catch(e) {}
+                            alert('<?php _e("操作失败：") ?>' + errorMsg);
                         }
                     });
                 });
@@ -250,16 +394,26 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
                         },
                         success: function(response) {
                             clearInterval(progressInterval);
-                            $('#progress-bar').css('width', '100%');
+                            $('#wcs-progress-bar').css('width', '100%');
+                            $('#wcs-current-step').text('同步完成！');
                             setTimeout(() => {
-                                $('#loading-overlay').fadeOut();
+                                $('#wcs-loading-overlay').fadeOut();
+                                resetLoadingState();
                                 alert('<?php _e("已成功发布到公众号"); ?>');
-                            }, 500);
+                            }, 800);
                         },
                         error: function(xhr) {
                             clearInterval(progressInterval);
-                            $('#loading-overlay').fadeOut();
-                            alert('<?php _e("操作失败：") ?>' + xhr.status + ' ' + xhr.statusText);
+                            $('#wcs-loading-overlay').fadeOut();
+                            resetLoadingState();
+                            let errorMsg = xhr.status + ' ' + xhr.statusText;
+                            try {
+                                const resp = JSON.parse(xhr.responseText);
+                                if (resp.error) {
+                                    errorMsg = resp.error;
+                                }
+                            } catch(e) {}
+                            alert('<?php _e("操作失败：") ?>' + errorMsg);
                         }
                     });
                 });
