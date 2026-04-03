@@ -86,7 +86,7 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
                 width: 100%;
                 height: 100%;
                 background: rgba(0,0,0,0.7);
-                display: none;
+                display: flex;
                 z-index: 10000;
                 justify-content: center;
                 align-items: center;
@@ -98,7 +98,8 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
                 padding: 40px 50px;
                 box-shadow: 0 20px 60px rgba(0,0,0,0.3);
                 text-align: center;
-                max-width: 400px;
+                width: 360px;
+                margin: 0 auto;
             }
             .wcs-icon {
                 width: 80px;
@@ -196,6 +197,105 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
             .wcs-loading-card.loading .wcs-icon {
                 animation: wcs-pulse 1.5s ease-in-out infinite;
             }
+            /* 自定义模态框样式 */
+            .wcs-modal-overlay {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.6);
+                display: none;
+                z-index: 10001;
+                justify-content: center;
+                align-items: center;
+                backdrop-filter: blur(4px);
+            }
+            .wcs-modal-overlay.show {
+                display: flex;
+            }
+            .wcs-modal-card {
+                background: #fff;
+                border-radius: 12px;
+                padding: 28px 32px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+                text-align: center;
+                width: 320px;
+                max-width: 90%;
+            }
+            .wcs-modal-icon {
+                width: 56px;
+                height: 56px;
+                margin: 0 auto 16px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 28px;
+            }
+            .wcs-modal-icon.success {
+                background: rgba(7, 193, 96, 0.1);
+                color: #07c160;
+            }
+            .wcs-modal-icon.error {
+                background: rgba(240, 68, 68, 0.1);
+                color: #f04444;
+            }
+            .wcs-modal-icon.warning {
+                background: rgba(250, 173, 20, 0.1);
+                color: #faad14;
+            }
+            .wcs-modal-icon.info {
+                background: rgba(24, 144, 255, 0.1);
+                color: #1890ff;
+            }
+            .wcs-modal-title {
+                font-size: 18px;
+                font-weight: 600;
+                color: #333;
+                margin-bottom: 8px;
+            }
+            .wcs-modal-message {
+                font-size: 14px;
+                color: #666;
+                margin-bottom: 24px;
+                line-height: 1.5;
+            }
+            .wcs-modal-buttons {
+                display: flex;
+                gap: 12px;
+                justify-content: center;
+            }
+            .wcs-modal-btn {
+                padding: 10px 24px;
+                border-radius: 6px;
+                font-size: 14px;
+                font-weight: 500;
+                cursor: pointer;
+                border: none;
+                transition: all 0.2s;
+            }
+            .wcs-modal-btn-primary {
+                background: #07c160;
+                color: #fff;
+            }
+            .wcs-modal-btn-primary:hover {
+                background: #06ad56;
+            }
+            .wcs-modal-btn-secondary {
+                background: #f5f5f5;
+                color: #666;
+            }
+            .wcs-modal-btn-secondary:hover {
+                background: #e8e8e8;
+            }
+            .wcs-modal-btn-danger {
+                background: #f04444;
+                color: #fff;
+            }
+            .wcs-modal-btn-danger:hover {
+                background: #dc3545;
+            }
         </style>
         <?php
     }
@@ -250,6 +350,99 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
                 $('#wcs-progress-bar').css('width', '0%');
                 $('.wcs-steps-list li').removeClass('active done');
             }
+
+            // 显示模态框
+            function wcsShowModal(options) {
+                // 如果已经显示，则移除
+                var existingModal = document.getElementById('wcs-modal');
+                if (existingModal) {
+                    existingModal.remove();
+                }
+
+                var type = options.type || 'info';
+                var title = options.title || '';
+                var message = options.message || '';
+                var buttons = options.buttons || [];
+                var iconText = {
+                    success: '√',
+                    error: '×',
+                    warning: '!',
+                    info: 'i'
+                }[type];
+
+                var html = '<div class="wcs-modal-overlay" id="wcs-modal" style="display:none;">' +
+                    '<div class="wcs-modal-card">' +
+                    '<div class="wcs-modal-icon ' + type + '">' + iconText + '</div>';
+                if (title) {
+                    html += '<div class="wcs-modal-title">' + title + '</div>';
+                }
+                if (message) {
+                    html += '<div class="wcs-modal-message">' + message + '</div>';
+                }
+                html += '<div class="wcs-modal-buttons">';
+                for (var i = 0; i < buttons.length; i++) {
+                    var btn = buttons[i];
+                    var btnClass = btn.primary ? 'wcs-modal-btn wcs-modal-btn-primary' : 'wcs-modal-btn wcs-modal-btn-secondary';
+                    if (btn.danger) {
+                        btnClass = 'wcs-modal-btn wcs-modal-btn-danger';
+                    }
+                    html += '<button class="' + btnClass + '" data-action="' + (btn.action || '') + '">' + btn.text + '</button>';
+                }
+                html += '</div></div></div>';
+
+                document.body.insertAdjacentHTML('beforeend', html);
+
+                var modal = document.getElementById('wcs-modal');
+                modal.style.display = 'flex';
+
+                var btns = modal.querySelectorAll('.wcs-modal-btn');
+                for (var j = 0; j < btns.length; j++) {
+                    btns[j].addEventListener('click', function() {
+                        var action = this.getAttribute('data-action');
+                        modal.remove();
+                        if (action && typeof window[action] === 'function') {
+                            window[action]();
+                        }
+                    });
+                }
+            }
+
+            // 快捷方法
+            function wcsAlert(message, callback) {
+                wcsShowModal({
+                    type: 'info',
+                    message: message,
+                    buttons: [{ text: '确定', action: callback ? 'wcsAlertCallback' : '' }]
+                });
+                if (callback) window.wcsAlertCallback = callback;
+            }
+            function wcsSuccess(message, callback) {
+                wcsShowModal({
+                    type: 'success',
+                    message: message,
+                    buttons: [{ text: '确定', primary: true, action: callback ? 'wcsSuccessCallback' : '' }]
+                });
+                if (callback) window.wcsSuccessCallback = callback;
+            }
+            function wcsError(message, callback) {
+                wcsShowModal({
+                    type: 'error',
+                    message: message,
+                    buttons: [{ text: '确定', primary: true, action: callback ? 'wcsErrorCallback' : '' }]
+                });
+                if (callback) window.wcsErrorCallback = callback;
+            }
+            function wcsConfirm(message, onConfirm) {
+                wcsShowModal({
+                    type: 'warning',
+                    message: message,
+                    buttons: [
+                        { text: '取消', action: '' },
+                        { text: '确认', primary: true, action: 'wcsConfirmCallback' }
+                    ]
+                });
+                window.wcsConfirmCallback = onConfirm;
+            }
         </script>
         <?php
     }
@@ -257,7 +450,7 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
     private static function getLoadingHtml()
     {
         ?>
-        <div class="wcs-loading-overlay" id="wcs-loading-overlay">
+        <div class="wcs-loading-overlay" id="wcs-loading-overlay" style="display:none;">
             <div class="wcs-loading-card loading">
                 <div class="wcs-icon">
                     <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -317,7 +510,7 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
                     });
 
                     if (cids.length === 0) {
-                        alert('<?php _e("请至少选择一篇文章"); ?>');
+                        wcsAlert('<?php _e("请至少选择一篇文章"); ?>');
                         return;
                     }
 
@@ -351,7 +544,7 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
                                     errorMsg = resp.error;
                                 }
                             } catch(e) {}
-                            alert('<?php _e("操作失败：") ?>' + errorMsg);
+                            wcsError('<?php _e("操作失败：") ?>' + errorMsg);
                         }
                     });
                 });
@@ -375,46 +568,44 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
                     e.preventDefault();
                     const cid = $('input[name="cid"]').val();
                     if (!cid) {
-                        alert('<?php _e("文章未保存，请先保存草稿或发布文章"); ?>');
+                        wcsAlert('<?php _e("文章未保存，请先保存草稿或发布文章"); ?>');
                         return;
                     }
 
-                    if (!confirm('<?php _e("确认发布到公众号吗？"); ?>')) {
-                        return;
-                    }
+                    wcsConfirm('<?php _e("确认发布到公众号吗？"); ?>', function() {
+                        const progressInterval = handleAjaxProgress();
 
-                    const progressInterval = handleAjaxProgress();
-
-                    $.ajax({
-                        url: '<?php $security = Typecho_Widget::widget("Widget_Security"); echo $security->index("/action/WeChatSync_action_plugin?do=custom_action"); ?>',
-                        type: 'POST',
-                        data: {
-                            cid: [cid],
-                            '_': '<?php echo Typecho_Widget::widget("Widget_Security")->getToken($request->getRequestUrl()); ?>'
-                        },
-                        success: function(response) {
-                            clearInterval(progressInterval);
-                            $('#wcs-progress-bar').css('width', '100%');
-                            $('#wcs-current-step').text('同步完成！');
-                            setTimeout(() => {
+                        $.ajax({
+                            url: '<?php $security = Typecho_Widget::widget("Widget_Security"); echo $security->index("/action/WeChatSync_action_plugin?do=custom_action"); ?>',
+                            type: 'POST',
+                            data: {
+                                cid: [cid],
+                                '_': '<?php echo Typecho_Widget::widget("Widget_Security")->getToken($request->getRequestUrl()); ?>'
+                            },
+                            success: function(response) {
+                                clearInterval(progressInterval);
+                                $('#wcs-progress-bar').css('width', '100%');
+                                $('#wcs-current-step').text('同步完成！');
+                                setTimeout(() => {
+                                    $('#wcs-loading-overlay').fadeOut();
+                                    resetLoadingState();
+                                    wcsSuccess('<?php _e("已成功发布到公众号"); ?>');
+                                }, 800);
+                            },
+                            error: function(xhr) {
+                                clearInterval(progressInterval);
                                 $('#wcs-loading-overlay').fadeOut();
                                 resetLoadingState();
-                                alert('<?php _e("已成功发布到公众号"); ?>');
-                            }, 800);
-                        },
-                        error: function(xhr) {
-                            clearInterval(progressInterval);
-                            $('#wcs-loading-overlay').fadeOut();
-                            resetLoadingState();
-                            let errorMsg = xhr.status + ' ' + xhr.statusText;
-                            try {
-                                const resp = JSON.parse(xhr.responseText);
-                                if (resp.error) {
-                                    errorMsg = resp.error;
-                                }
-                            } catch(e) {}
-                            alert('<?php _e("操作失败：") ?>' + errorMsg);
-                        }
+                                let errorMsg = xhr.status + ' ' + xhr.statusText;
+                                try {
+                                    const resp = JSON.parse(xhr.responseText);
+                                    if (resp.error) {
+                                        errorMsg = resp.error;
+                                    }
+                                } catch(e) {}
+                                wcsError('<?php _e("操作失败：") ?>' + errorMsg);
+                            }
+                        });
                     });
                 });
             });
