@@ -152,7 +152,6 @@ class WeChatClient
      */
     private function convertToJpeg($imagePath)
     {
-        $isNetworkImage = false;
         $tempFiles = array();
 
         // 如果是网络图片，先下载到本地
@@ -161,8 +160,6 @@ class WeChatClient
             if ($content === false) {
                 return $imagePath;
             }
-            $isNetworkImage = true;
-            // 临时文件，扩展名无所谓，上传时会检测真实类型
             $tempFile = $this->cacheDir . '/temp_' . uniqid() . '.tmp';
             file_put_contents($tempFile, $content);
             $imagePath = $tempFile;
@@ -174,42 +171,91 @@ class WeChatClient
             return $imagePath;
         }
 
-        // 获取图片类型
-        $imageInfo = @getimagesize($imagePath);
-        if ($imageInfo === false) {
+        // 通过文件魔术字节检测真实类型
+        $realType = $this->detectImageType($imagePath);
+
+        // JPG/PNG 直接返回
+        if ($realType === 'jpeg' || $realType === 'png') {
             return $imagePath;
         }
 
-        $imageType = $imageInfo[2];
+        // 转换 WEBP
+        if ($realType === 'webp') {
+            $srcImage = @imagecreatefromwebp($imagePath);
+            if ($srcImage !== false) {
+                $outputPath = $this->cacheDir . '/converted_' . uniqid() . '.jpg';
+                $result = imagejpeg($srcImage, $outputPath, 90);
+                imagedestroy($srcImage);
 
-        // JPG/PNG/GIF/BMP 直接返回
-        if (in_array($imageType, [IMAGETYPE_JPEG, IMAGETYPE_PNG, IMAGETYPE_GIF, IMAGETYPE_BMP])) {
-            return $imagePath;
-        }
-
-        // 只转换 WEBP
-        $srcImage = null;
-        switch ($imageType) {
-            case IMAGETYPE_WEBP:
-                $srcImage = @imagecreatefromwebp($imagePath);
-                break;
-        }
-
-        if ($srcImage !== false && $srcImage !== null) {
-            $outputPath = $this->cacheDir . '/converted_' . uniqid() . '.jpg';
-            $result = imagejpeg($srcImage, $outputPath, 90);
-            imagedestroy($srcImage);
-
-            if ($result && file_exists($outputPath)) {
-                // 删除下载的临时文件
-                foreach ($tempFiles as $tf) {
-                    if (file_exists($tf)) @unlink($tf);
+                if ($result && file_exists($outputPath)) {
+                    // 删除下载的临时文件
+                    foreach ($tempFiles as $tf) {
+                        if (file_exists($tf)) @unlink($tf);
+                    }
+                    return $outputPath;
                 }
-                return $outputPath;
             }
         }
 
         return $imagePath;
+    }
+
+    /**
+     * 通过魔术字节检测图片真实类型
+     * @param string $imagePath 图片路径
+     * @return string 图片类型 (jpeg, png, webp, gif, bmp, unknown)
+     */
+    private function detectImageType($imagePath)
+    {
+        $handle = @fopen($imagePath, 'rb');
+        if ($handle === false) {
+            return 'unknown';
+        }
+
+        $data = fread($handle, 12);
+        fclose($handle);
+
+        if (substr($data, 0, 2) === "\xFF\xD8") {
+            return 'jpeg';
+        }
+        if (substr($data, 0, 8) === "\x89\x50\x4E\x47\x0D\x0A\x1A\x0A") {
+            return 'png';
+        }
+        if (substr($data, 0, 4) === "RIFF" && substr($data, 8, 4) === "WEBP") {
+            return 'webp';
+        }
+        if (substr($data, 0, 3) === "GIF") {
+            return 'gif';
+        }
+        if (substr($data, 0, 2) === "BM") {
+            return 'bmp';
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * 通过魔术字节检测图片 MIME 类型
+     * @param string $imagePath 图片路径
+     * @return string MIME 类型
+     */
+    private function detectImageMime($imagePath)
+    {
+        $type = $this->detectImageType($imagePath);
+        switch ($type) {
+            case 'jpeg':
+                return 'image/jpeg';
+            case 'png':
+                return 'image/png';
+            case 'gif':
+                return 'image/gif';
+            case 'webp':
+                return 'image/jpeg'; // 转换后的文件是 jpg
+            case 'bmp':
+                return 'image/bmp';
+            default:
+                return 'application/octet-stream';
+        }
     }
 
     /**
@@ -347,7 +393,7 @@ class WeChatClient
                     throw new Exception('文件不存在: ' . $imagePath);
                 }
 
-                // 使用 CURLFile 上传
+                // 使用 image/jpeg，微信会根据文件内容识别真实类型
                 $curlFile = new CURLFile($imagePath, 'image/jpeg', basename($imagePath));
                 $postData = array('media' => $curlFile);
                 curl_setopt($ch, CURLOPT_SAFE_UPLOAD, true);
