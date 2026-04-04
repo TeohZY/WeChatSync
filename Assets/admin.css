@@ -107,8 +107,18 @@
     border-color: #07c160;
     color: white;
 }
-.wcs-steps-list li.done .wcs-step-icon::after {
-    content: "✓";
+.wcs-steps-list li .wcs-step-text {
+    flex: 1;
+}
+.wcs-steps-list li .wcs-step-check {
+    margin-left: 12px;
+    color: #07c160;
+    font-size: 16px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.wcs-steps-list li.done .wcs-step-check {
+    opacity: 1;
 }
 @keyframes wcs-pulse {
     0%, 100% { transform: scale(1); }

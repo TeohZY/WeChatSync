@@ -18,11 +18,11 @@
         '<div class="wcs-progress-bar" id="wcs-progress-bar"></div>' +
         '</div>' +
         '<ul class="wcs-steps-list">' +
-        '<li><span class="wcs-step-icon">1</span><span id="step-token">获取访问令牌</span></li>' +
-        '<li><span class="wcs-step-icon">2</span><span id="step-cover">上传封面图片</span></li>' +
-        '<li><span class="wcs-step-icon">3</span><span id="step-content">处理文章内容</span></li>' +
-        '<li><span class="wcs-step-icon">4</span><span id="step-images">上传文章图片</span></li>' +
-        '<li><span class="wcs-step-icon">5</span><span id="step-submit">提交到公众号</span></li>' +
+        '<li><span class="wcs-step-icon">1</span><span class="wcs-step-text" id="step-token">获取访问令牌</span><span class="wcs-step-check">✓</span></li>' +
+        '<li><span class="wcs-step-icon">2</span><span class="wcs-step-text" id="step-cover">上传封面图片</span><span class="wcs-step-check">✓</span></li>' +
+        '<li><span class="wcs-step-icon">3</span><span class="wcs-step-text" id="step-content">处理文章内容</span><span class="wcs-step-check">✓</span></li>' +
+        '<li><span class="wcs-step-icon">4</span><span class="wcs-step-text" id="step-images">上传文章图片</span><span class="wcs-step-check">✓</span></li>' +
+        '<li><span class="wcs-step-icon">5</span><span class="wcs-step-text" id="step-submit">提交到公众号</span><span class="wcs-step-check">✓</span></li>' +
         '</ul>' +
         '</div>' +
         '</div>';
