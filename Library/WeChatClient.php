@@ -110,7 +110,6 @@ class WeChatClient
      */
     public function uploadCover($cid)
     {
-        error_log("WeChatSync: uploadCover 开始");
         $db = Typecho_Db::get();
         $imagePath = $db->fetchRow($db->select('str_value')
             ->from('table.fields')
@@ -119,14 +118,10 @@ class WeChatClient
 
         $imagePath = $imagePath['str_value'];
 
-        error_log("WeChatSync: 封面图片路径 = " . $imagePath);
-
         if (empty($imagePath)) {
             return $this->getMediaId();
         }
 
-        // 原始路径，用于判断是否需要删除临时文件
-        $originalPath = $imagePath;
         $tempFiles = array();
 
         // 检查并转换不兼容的图片格式
@@ -136,19 +131,14 @@ class WeChatClient
             $tempFiles[] = $imagePath;
         }
 
-        error_log("WeChatSync: 封面图处理后路径 = " . $imagePath);
-
         $accessToken = $this->getAccessToken();
         $url = 'https://api.weixin.qq.com/cgi-bin/material/add_material?access_token='.$accessToken ."&type=image";
-        error_log("WeChatSync: 开始上传封面图到微信 (type=image)...");
         $res = $this->curl($url, '', true, $imagePath);
-        error_log("WeChatSync: 封面图上传成功, media_id = " . $res->media_id);
 
         // 删除临时文件
         foreach ($tempFiles as $tempFile) {
             if (file_exists($tempFile)) {
                 @unlink($tempFile);
-                error_log("WeChatSync: 删除临时文件 $tempFile");
             }
         }
 
@@ -236,8 +226,6 @@ class WeChatClient
             return $imagePath;
         }
 
-        error_log("WeChatSync: 图片大小 " . $fileSize . " 超过 64KB，需要压缩");
-
         // 加载图片
         $imageInfo = @getimagesize($imagePath);
         if ($imageInfo === false) {
@@ -287,7 +275,6 @@ class WeChatClient
             imagedestroy($dstImage);
 
             $checkSize = filesize($tempFile);
-            error_log("WeChatSync: 缩略图压缩尝试 - 质量=$quality, 尺寸=${newWidth}x${newHeight}, 大小=$checkSize");
 
             if ($checkSize > $maxSize) {
                 @unlink($tempFile);
@@ -315,18 +302,15 @@ class WeChatClient
      */
     public function uploadImageToWeChat($html)
     {
-        error_log("WeChatSync: uploadImageToWeChat 开始");
         $accessToken = $this->getAccessToken();
         $url = 'https://api.weixin.qq.com/cgi-bin/media/uploadimg?access_token='.$accessToken;
 
         preg_match_all('/<img[^>]+>/i', $html, $matches);
         $images = $matches[0];
-        error_log("WeChatSync: 发现 " . count($images) . " 张图片");
 
-        foreach ($images as $index => $image) {
+        foreach ($images as $image) {
             preg_match('/src="([^"]+)"/i', $image, $srcMatches);
             $src = $srcMatches[1];
-            error_log("WeChatSync: 处理第 " . $index . " 张图片: " . $src);
 
             $res = $this->curl($url, '', true, $src);
             $wxImageUrl = $res->url;
@@ -362,8 +346,6 @@ class WeChatClient
                 if (!file_exists($imagePath)) {
                     throw new Exception('文件不存在: ' . $imagePath);
                 }
-                $fileSize = filesize($imagePath);
-                error_log("WeChatSync curl: 文件=$imagePath, 大小=$fileSize");
 
                 // 使用 CURLFile 上传
                 $curlFile = new CURLFile($imagePath, 'image/jpeg', basename($imagePath));
