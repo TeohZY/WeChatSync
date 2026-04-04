@@ -433,17 +433,23 @@ style="font-size: 16px; color: black; padding: 25px 30px; line-height: 1.6; word
         $url = 'https://api.weixin.qq.com/cgi-bin/draft/add?access_token='.$accessToken;
         $mediaId = self::uploadCover($cid);
         $html = html_entity_decode(self::uploadImageToWeChat($post['text']), ENT_QUOTES, 'UTF-8');
+
+        // 构建文章数组
+        $article = [
+            "title"=>$title,
+            "author"=>$author,
+            "content"=>$html,
+            "thumb_media_id"=>$mediaId,
+            "digest" => $digest
+        ];
+
+        // 只有开启设置时才添加原文链接
+        if (!empty(self::getSetting()->addSourceUrl)) {
+            $article["content_source_url"] = $permalink;
+        }
+
         $array = [
-            "articles"=>[
-                [
-                    "title"=>$title,
-                    "author"=>$author,
-                    "content"=>$html,
-                    "content_source_url"=>$permalink,
-                    "thumb_media_id"=>$mediaId,
-                    "digest" => $digest
-                ]
-            ]
+            "articles"=>[$article]
         ];
         $result = self::curl($url,json_encode($array, JSON_UNESCAPED_UNICODE),true);
 

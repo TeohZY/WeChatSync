@@ -34,6 +34,8 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
         $form->addInput($author);
         $abstractField = new Typecho_Widget_Helper_Form_Element_Text('摘要字段', NULL, '', _t('文章摘要字段'), _t('请填写主题对应摘要字段，默认为abstract'));
         $form->addInput($abstractField);
+        $addSourceUrl = new Typecho_Widget_Helper_Form_Element_Radio('addSourceUrl', array('1' => '是', '0' => '否'), '1', _t('添加原文链接'), _t('开启后会在文章末尾添加指向原文的链接'));
+        $form->addInput($addSourceUrl);
     }
 
     public static function personalConfig(Typecho_Widget_Helper_Form $form) {}
