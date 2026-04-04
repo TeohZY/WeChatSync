@@ -124,6 +124,22 @@ class WeChatClient
 
         $tempFiles = array();
 
+        // 下载网络图片到本地
+        if (strpos($imagePath, 'http') === 0) {
+            $content = @file_get_contents($imagePath);
+            if ($content !== false) {
+                // 根据 URL 扩展名保存
+                $ext = pathinfo($imagePath, PATHINFO_EXTENSION);
+                if (empty($ext)) {
+                    $ext = 'jpg';
+                }
+                $localFile = $this->cacheDir . '/upload_' . uniqid() . '.' . $ext;
+                file_put_contents($localFile, $content);
+                $imagePath = $localFile;
+                $tempFiles[] = $imagePath;
+            }
+        }
+
         // 检查并转换不兼容的图片格式
         $convertedPath = $this->convertToJpeg($imagePath);
         if ($convertedPath !== $imagePath) {
@@ -147,6 +163,7 @@ class WeChatClient
 
     /**
      * 将不兼容的图片格式转换为 JPG
+     * 只处理 WebP 格式，其他格式直接返回原路径
      * @param string $imagePath 图片路径
      * @return string 转换后的图片路径
      */
@@ -154,19 +171,36 @@ class WeChatClient
     {
         $tempFiles = array();
 
-        // 如果是网络图片，先下载到本地
+        // 如果是网络图片，先检测是否是 WebP
         if (strpos($imagePath, 'http') === 0) {
+            // 先下载文件头检测类型
+            $handle = @fopen($imagePath, 'rb');
+            if ($handle === false) {
+                return $imagePath;
+            }
+            $header = @fread($handle, 16);
+            fclose($handle);
+
+            // 检测是否是 WebP
+            $isWebP = (substr($header, 0, 4) === "RIFF" && substr($header, 8, 4) === "WEBP");
+
+            if (!$isWebP) {
+                // 非 WebP 网络图片，直接返回原 URL，不下载
+                return $imagePath;
+            }
+
+            // 是 WebP，下载并转换
             $content = @file_get_contents($imagePath);
             if ($content === false) {
                 return $imagePath;
             }
-            $tempFile = $this->cacheDir . '/temp_' . uniqid() . '.tmp';
+            $tempFile = $this->cacheDir . '/temp_' . uniqid() . '.webp';
             file_put_contents($tempFile, $content);
             $imagePath = $tempFile;
             $tempFiles[] = $tempFile;
         }
 
-        // 检查文件是否存在
+        // 本地文件或已下载的文件，检测真实类型
         if (!file_exists($imagePath)) {
             return $imagePath;
         }
@@ -388,12 +422,12 @@ class WeChatClient
                     'Content-Type: application/json',
                 ));
             } else {
-                // 检查文件
-                if (!file_exists($imagePath)) {
+                // 检查本地文件是否存在（URL 跳过检查）
+                if (!preg_match('/^https?:\/\//', $imagePath) && !file_exists($imagePath)) {
                     throw new Exception('文件不存在: ' . $imagePath);
                 }
 
-                // 使用 image/jpeg，微信会根据文件内容识别真实类型
+                // 使用 CURLFile 上传
                 $curlFile = new CURLFile($imagePath, 'image/jpeg', basename($imagePath));
                 $postData = array('media' => $curlFile);
                 curl_setopt($ch, CURLOPT_SAFE_UPLOAD, true);
