@@ -25,6 +25,17 @@ class SyncRenderer
             ->where('cid = ?', intval($cid))
             ->where('type = ?', 'post')
             ->where('status = ?', 'publish'));
+
+        if (!empty($post)) {
+            try {
+                $archive = Widget_Archive::alloc('type=post', 'cid=' . intval($cid));
+                if (!empty($archive->permalink)) {
+                    $post['permalink'] = $archive->permalink;
+                }
+            } catch (Exception $e) {
+            }
+        }
+
         return $post;
     }
 
@@ -75,11 +86,12 @@ class SyncRenderer
         $digest = $abstractRow ? $abstractRow['str_value'] : '';
 
         $title = isset($post['title']) ? $post['title'] : '';
-        $permalink = $this->processor->getPermalinkByCid($cid);
+        $permalink = !empty($post['permalink']) ? $post['permalink'] : $this->processor->getPermalinkByCid($cid);
         $accessToken = $this->client->getAccessToken();
         $url = 'https://api.weixin.qq.com/cgi-bin/draft/add?access_token='.$accessToken;
         $mediaId = $this->client->uploadCover($cid);
-        $html = html_entity_decode($this->client->uploadImageToWeChat($post['text']), ENT_QUOTES, 'UTF-8');
+        $html = $this->processor->renderMarkdown($post['text']);
+        $html = html_entity_decode($this->client->uploadImageToWeChat($html), ENT_QUOTES, 'UTF-8');
 
         $article = [
             "title"=>$title,

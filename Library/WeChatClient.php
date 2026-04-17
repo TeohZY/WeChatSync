@@ -82,11 +82,16 @@ class WeChatClient
                 "offset"=>0,
                 "count"=>20
             ];
-            $mediaList = $this->curl($url, json_encode($array), true)->item;
+            $response = $this->curl($url, json_encode($array), true);
+            $mediaList = isset($response->item) && is_array($response->item) ? $response->item : [];
+
+            if (empty($mediaList)) {
+                throw new Exception('未找到可用的微信图片素材，请先在公众号素材库上传一张图片，或为文章设置 thumb 封面');
+            }
 
             $matching = null;
             foreach ($mediaList as $media) {
-                if ($media->name == "typecho.jpg") {
+                if (isset($media->name) && $media->name == "typecho.jpg") {
                     $matching = $media;
                     break;
                 }
@@ -95,6 +100,9 @@ class WeChatClient
             if ($matching != null) {
                 $media_id = $matching->media_id;
             } else {
+                if (empty($mediaList[0]->media_id)) {
+                    throw new Exception('微信图片素材缺少 media_id，无法作为默认封面使用');
+                }
                 $media_id = $mediaList[0]->media_id;
             }
 
@@ -122,34 +130,23 @@ class WeChatClient
             return $this->getMediaId();
         }
 
-        $tempFiles = array();
+        list($imagePath, $tempFiles) = $this->prepareCoverImage($imagePath);
 
-        // 下载网络图片到本地
-        if (strpos($imagePath, 'http') === 0) {
-            $content = @file_get_contents($imagePath);
-            if ($content !== false) {
-                // 根据 URL 扩展名保存
-                $ext = pathinfo($imagePath, PATHINFO_EXTENSION);
-                if (empty($ext)) {
-                    $ext = 'jpg';
-                }
-                $localFile = $this->cacheDir . '/upload_' . uniqid() . '.' . $ext;
-                file_put_contents($localFile, $content);
-                $imagePath = $localFile;
+        if (file_exists($imagePath)) {
+            $sizedPath = $this->ensureThumbSize($imagePath);
+            if ($sizedPath !== $imagePath) {
+                $imagePath = $sizedPath;
                 $tempFiles[] = $imagePath;
             }
-        }
-
-        // 检查并转换不兼容的图片格式
-        $convertedPath = $this->convertToJpeg($imagePath);
-        if ($convertedPath !== $imagePath) {
-            $imagePath = $convertedPath;
-            $tempFiles[] = $imagePath;
         }
 
         $accessToken = $this->getAccessToken();
         $url = 'https://api.weixin.qq.com/cgi-bin/material/add_material?access_token='.$accessToken ."&type=image";
         $res = $this->curl($url, '', true, $imagePath);
+
+        if (empty($res->media_id)) {
+            throw new Exception('微信封面上传失败：未返回 media_id');
+        }
 
         // 删除临时文件
         foreach ($tempFiles as $tempFile) {
@@ -162,76 +159,76 @@ class WeChatClient
     }
 
     /**
-     * 将不兼容的图片格式转换为 JPG
-     * 只处理 WebP 格式，其他格式直接返回原路径
+     * 将封面统一准备为本地 JPEG 文件，避免微信素材接口对格式提示敏感
+     * @param string $imagePath
+     * @return array{0:string,1:array}
+     */
+    private function prepareCoverImage($imagePath)
+    {
+        $tempFiles = array();
+
+        if (strpos($imagePath, 'http') === 0) {
+            $content = @file_get_contents($imagePath);
+            if ($content === false) {
+                throw new Exception('无法下载封面图片：' . $imagePath);
+            }
+
+            $localFile = $this->cacheDir . '/upload_' . uniqid() . '.img';
+            file_put_contents($localFile, $content);
+            $imagePath = $localFile;
+            $tempFiles[] = $imagePath;
+        }
+
+        $preparedPath = $this->convertToJpeg($imagePath);
+        if ($preparedPath !== $imagePath) {
+            $imagePath = $preparedPath;
+            $tempFiles[] = $imagePath;
+        }
+
+        return array($imagePath, $tempFiles);
+    }
+
+    /**
+     * 将封面图片标准化为 JPG，降低微信素材接口的格式兼容问题
      * @param string $imagePath 图片路径
      * @return string 转换后的图片路径
      */
     private function convertToJpeg($imagePath)
     {
-        $tempFiles = array();
-
-        // 如果是网络图片，先检测是否是 WebP
-        if (strpos($imagePath, 'http') === 0) {
-            // 先下载文件头检测类型
-            $handle = @fopen($imagePath, 'rb');
-            if ($handle === false) {
-                return $imagePath;
-            }
-            $header = @fread($handle, 16);
-            fclose($handle);
-
-            // 检测是否是 WebP
-            $isWebP = (substr($header, 0, 4) === "RIFF" && substr($header, 8, 4) === "WEBP");
-
-            if (!$isWebP) {
-                // 非 WebP 网络图片，直接返回原 URL，不下载
-                return $imagePath;
-            }
-
-            // 是 WebP，下载并转换
-            $content = @file_get_contents($imagePath);
-            if ($content === false) {
-                return $imagePath;
-            }
-            $tempFile = $this->cacheDir . '/temp_' . uniqid() . '.webp';
-            file_put_contents($tempFile, $content);
-            $imagePath = $tempFile;
-            $tempFiles[] = $tempFile;
-        }
-
-        // 本地文件或已下载的文件，检测真实类型
         if (!file_exists($imagePath)) {
-            return $imagePath;
+            throw new Exception('封面文件不存在：' . $imagePath);
         }
 
-        // 通过文件魔术字节检测真实类型
         $realType = $this->detectImageType($imagePath);
 
-        // JPG/PNG 直接返回
-        if ($realType === 'jpeg' || $realType === 'png') {
+        if ($realType === 'jpeg') {
             return $imagePath;
         }
 
-        // 转换 WEBP
-        if ($realType === 'webp') {
-            $srcImage = @imagecreatefromwebp($imagePath);
-            if ($srcImage !== false) {
-                $outputPath = $this->cacheDir . '/converted_' . uniqid() . '.jpg';
-                $result = imagejpeg($srcImage, $outputPath, 90);
-                imagedestroy($srcImage);
-
-                if ($result && file_exists($outputPath)) {
-                    // 删除下载的临时文件
-                    foreach ($tempFiles as $tf) {
-                        if (file_exists($tf)) @unlink($tf);
-                    }
-                    return $outputPath;
-                }
-            }
+        $srcImage = $this->createImageResource($imagePath, $realType);
+        if ($srcImage === null) {
+            throw new Exception('不支持的封面图片格式：' . $realType);
         }
 
-        return $imagePath;
+        $width = imagesx($srcImage);
+        $height = imagesy($srcImage);
+        $dstImage = imagecreatetruecolor($width, $height);
+
+        $white = imagecolorallocate($dstImage, 255, 255, 255);
+        imagefill($dstImage, 0, 0, $white);
+        imagecopy($dstImage, $srcImage, 0, 0, 0, 0, $width, $height);
+
+        $outputPath = $this->cacheDir . '/converted_' . uniqid() . '.jpg';
+        $result = imagejpeg($dstImage, $outputPath, 90);
+
+        imagedestroy($srcImage);
+        imagedestroy($dstImage);
+
+        if (!$result || !file_exists($outputPath)) {
+            throw new Exception('封面图片转换 JPG 失败');
+        }
+
+        return $outputPath;
     }
 
     /**
@@ -269,13 +266,42 @@ class WeChatClient
     }
 
     /**
-     * 通过魔术字节检测图片 MIME 类型
+     * 按真实格式创建图片资源
+     * @param string $imagePath
+     * @param string $realType
+     * @return resource|GdImage|null
+     */
+    private function createImageResource($imagePath, $realType)
+    {
+        switch ($realType) {
+            case 'jpeg':
+                return @imagecreatefromjpeg($imagePath);
+            case 'png':
+                return @imagecreatefrompng($imagePath);
+            case 'gif':
+                return @imagecreatefromgif($imagePath);
+            case 'bmp':
+                return function_exists('imagecreatefrombmp') ? @imagecreatefrombmp($imagePath) : null;
+            case 'webp':
+                if (!function_exists('imagecreatefromwebp')) {
+                    throw new Exception('服务器未启用 GD WebP 支持，无法处理 WebP 封面。请安装支持 WebP 的 GD 扩展，或将封面改为 JPG/PNG');
+                }
+                return @imagecreatefromwebp($imagePath);
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * 根据实际文件内容推断上传 MIME
+     * 微信素材接口对 MIME 和真实格式不一致比较敏感
      * @param string $imagePath 图片路径
-     * @return string MIME 类型
+     * @return string
      */
     private function detectImageMime($imagePath)
     {
         $type = $this->detectImageType($imagePath);
+
         switch ($type) {
             case 'jpeg':
                 return 'image/jpeg';
@@ -283,10 +309,10 @@ class WeChatClient
                 return 'image/png';
             case 'gif':
                 return 'image/gif';
-            case 'webp':
-                return 'image/jpeg'; // 转换后的文件是 jpg
             case 'bmp':
                 return 'image/bmp';
+            case 'webp':
+                return 'image/webp';
             default:
                 return 'application/octet-stream';
         }
@@ -323,10 +349,16 @@ class WeChatClient
                 $srcImage = @imagecreatefrompng($imagePath);
                 break;
             case IMAGETYPE_WEBP:
+                if (!function_exists('imagecreatefromwebp')) {
+                    throw new Exception('服务器未启用 GD WebP 支持，无法压缩 WebP 封面。请安装支持 WebP 的 GD 扩展，或将封面改为 JPG/PNG');
+                }
                 $srcImage = @imagecreatefromwebp($imagePath);
                 break;
             case IMAGETYPE_GIF:
                 $srcImage = @imagecreatefromgif($imagePath);
+                break;
+            case IMAGETYPE_BMP:
+                $srcImage = function_exists('imagecreatefrombmp') ? @imagecreatefrombmp($imagePath) : null;
                 break;
         }
 
@@ -389,16 +421,82 @@ class WeChatClient
         $images = $matches[0];
 
         foreach ($images as $image) {
-            preg_match('/src="([^"]+)"/i', $image, $srcMatches);
-            $src = $srcMatches[1];
+            if (!preg_match('/src="([^"]+)"/i', $image, $srcMatches) || empty($srcMatches[1])) {
+                continue;
+            }
 
-            $res = $this->curl($url, '', true, $src);
+            $src = $srcMatches[1];
+            list($uploadPath, $tempFiles) = $this->prepareArticleImage($src);
+
+            try {
+                $res = $this->curl($url, '', true, $uploadPath);
+            } catch (Exception $e) {
+                foreach ($tempFiles as $tempFile) {
+                    if (file_exists($tempFile)) {
+                        @unlink($tempFile);
+                    }
+                }
+                throw new Exception('微信正文图片上传失败：' . $src . '，' . $e->getMessage());
+            }
+
+            if (empty($res->url)) {
+                foreach ($tempFiles as $tempFile) {
+                    if (file_exists($tempFile)) {
+                        @unlink($tempFile);
+                    }
+                }
+                throw new Exception('微信正文图片上传失败：' . $src . '，未返回图片地址');
+            }
+
             $wxImageUrl = $res->url;
             $html = str_replace($src, $wxImageUrl, $html);
+
+            foreach ($tempFiles as $tempFile) {
+                if (file_exists($tempFile)) {
+                    @unlink($tempFile);
+                }
+            }
         }
 
         $html = $this->formatHtmlWithDOM($html);
         return $html;
+    }
+
+    /**
+     * 将正文图片准备为微信更稳定接受的本地文件
+     * @param string $imagePath
+     * @return array{0:string,1:array}
+     */
+    private function prepareArticleImage($imagePath)
+    {
+        $tempFiles = array();
+        $localPath = $imagePath;
+
+        if (preg_match('/^https?:\/\//', $imagePath)) {
+            $content = @file_get_contents($imagePath);
+            if ($content === false) {
+                throw new Exception('无法下载图片');
+            }
+
+            $localPath = $this->cacheDir . '/article_' . uniqid() . '.img';
+            file_put_contents($localPath, $content);
+            $tempFiles[] = $localPath;
+        }
+
+        if (!file_exists($localPath)) {
+            throw new Exception('图片文件不存在');
+        }
+
+        $realType = $this->detectImageType($localPath);
+        if ($realType !== 'jpeg' && $realType !== 'png') {
+            $convertedPath = $this->convertToJpeg($localPath);
+            if ($convertedPath !== $localPath) {
+                $localPath = $convertedPath;
+                $tempFiles[] = $localPath;
+            }
+        }
+
+        return array($localPath, $tempFiles);
     }
 
     /**
@@ -422,13 +520,13 @@ class WeChatClient
                     'Content-Type: application/json',
                 ));
             } else {
-                // 检查本地文件是否存在（URL 跳过检查）
-                if (!preg_match('/^https?:\/\//', $imagePath) && !file_exists($imagePath)) {
+                if (!file_exists($imagePath)) {
                     throw new Exception('文件不存在: ' . $imagePath);
                 }
 
-                // 使用 CURLFile 上传
-                $curlFile = new CURLFile($imagePath, 'image/jpeg', basename($imagePath));
+                // 使用 CURLFile 上传本地文件
+                $mimeType = $this->detectImageMime($imagePath);
+                $curlFile = new CURLFile($imagePath, $mimeType, basename($imagePath));
                 $postData = array('media' => $curlFile);
                 curl_setopt($ch, CURLOPT_SAFE_UPLOAD, true);
             }

@@ -18,7 +18,14 @@ class WeChatSync_Action extends Typecho_Widget implements Widget_Interface_Do
                 try {
                     SyncRenderer::render($cid);
                     $successCount++;
-                } catch (Exception $e) {
+                } catch (Throwable $e) {
+                    error_log(sprintf(
+                        '[WeChatSync] cid=%d error=%s file=%s line=%d',
+                        $cid,
+                        $e->getMessage(),
+                        $e->getFile(),
+                        $e->getLine()
+                    ));
                     $errors[] = '文章 ' . $cid . '：' . $e->getMessage();
                 }
             }
