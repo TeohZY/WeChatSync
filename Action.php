@@ -11,6 +11,26 @@ class WeChatSync_Action extends Typecho_Widget implements Widget_Interface_Do
 
         $cids = $this->request->filter('int')->getArray('cid');
 
+        if ($this->request->get('do') === 'preview') {
+            $cid = intval($this->request->get('cid'));
+            try {
+                $preview = SyncRenderer::preview($cid);
+                $this->response->setStatus(200);
+                echo json_encode($preview);
+            } catch (Throwable $e) {
+                error_log(sprintf(
+                    '[WeChatSync] preview cid=%d error=%s file=%s line=%d',
+                    $cid,
+                    $e->getMessage(),
+                    $e->getFile(),
+                    $e->getLine()
+                ));
+                $this->response->setStatus(500);
+                echo json_encode(['error' => $e->getMessage()]);
+            }
+            return;
+        }
+
         if (!empty($cids) && $this->request->get('do') === 'custom_action') {
             $successCount = 0;
             $errors = [];

@@ -49,6 +49,15 @@ class SyncRenderer
     }
 
     /**
+     * 生成预览数据
+     */
+    public static function preview($cid)
+    {
+        $instance = new self();
+        return $instance->buildPreview($cid);
+    }
+
+    /**
      * 同步文章
      */
     private function syncArticle($cid)
@@ -116,5 +125,24 @@ class SyncRenderer
         }
 
         return $result->media_id;
+    }
+
+    /**
+     * 构造公众号预览内容
+     */
+    private function buildPreview($cid)
+    {
+        $post = $this->getPost($cid);
+
+        if (empty($post) || !isset($post['text'])) {
+            throw new Exception('文章不存在或内容为空');
+        }
+
+        $html = html_entity_decode($this->processor->renderMarkdown($post['text']), ENT_QUOTES, 'UTF-8');
+
+        return [
+            'title' => isset($post['title']) ? $post['title'] : '',
+            'content' => $html
+        ];
     }
 }

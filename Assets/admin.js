@@ -33,10 +33,11 @@
     function getWcsConfig() {
         var configEl = document.getElementById('wcs-config');
         if (!configEl) {
-            return { actionUrl: '', securityToken: '' };
+            return { actionUrl: '', previewUrl: '', securityToken: '' };
         }
         return {
             actionUrl: configEl.getAttribute('data-action'),
+            previewUrl: configEl.getAttribute('data-preview'),
             securityToken: configEl.getAttribute('data-token')
         };
     }
@@ -211,6 +212,168 @@
         window.wcsConfirmCallback = onConfirm;
     }
 
+    function escapeHtml(text) {
+        return String(text || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function buildPreviewDocument(title, content) {
+        var previewStyles = '' +
+            'html,body{margin:0;padding:0;background:#fff;color:#243228;font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue","PingFang SC","Microsoft YaHei",sans-serif;}' +
+            'body{padding:0;line-height:1.75;word-break:break-word;}' +
+            'img{max-width:100%;height:auto;display:block;}' +
+            'h1,h2,h3,h4,h5,h6{color:#17241b;line-height:1.4;}' +
+            'a{color:#1f7a45;text-decoration:none;}' +
+            'blockquote{margin:1em 0;padding:0.75em 1em;border-left:4px solid #8bc79a;background:#f6fbf7;color:#486050;}' +
+            'table{width:100%;border-collapse:collapse;display:block;overflow:auto;}' +
+            'table th,table td{border:1px solid #dbe7dd;padding:8px 10px;}' +
+            'pre{white-space:pre-wrap;word-break:break-word;}' +
+            'code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;}' +
+            '.wx-shell{min-height:100vh;background:linear-gradient(180deg,#ffffff 0%,#fbfcfb 100%);}' +
+            '.wx-topbar{height:44px;display:flex;align-items:center;justify-content:center;position:sticky;top:0;background:rgba(255,255,255,0.96);backdrop-filter:blur(10px);border-bottom:1px solid #edf2ee;font-size:16px;font-weight:600;color:#132118;z-index:2;}' +
+            '.wx-topbar::before{content:"‹";position:absolute;left:16px;font-size:24px;line-height:1;color:#223328;}' +
+            '.wx-article{padding:22px 22px 32px;}' +
+            '.wx-authorbar{display:flex;align-items:center;gap:12px;margin-bottom:18px;}' +
+            '.wx-avatar{width:38px;height:38px;border-radius:50%;background:linear-gradient(135deg,#35c568,#1d8f47);display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700;box-shadow:0 6px 18px rgba(53,197,104,0.22);}' +
+            '.wx-author-meta{display:flex;flex-direction:column;gap:2px;}' +
+            '.wx-author-name{font-size:14px;font-weight:700;color:#153020;}' +
+            '.wx-author-sub{font-size:12px;color:#8a968e;}' +
+            '.wx-follow{margin-left:auto;padding:6px 14px;border-radius:999px;border:1px solid #8fd6a7;background:#f4fff7;color:#1f8f48;font-size:12px;font-weight:700;}' +
+            '.code-snippet__fix{display:flex!important;margin:10px 0!important;border:1px solid #e6ece8!important;border-radius:10px!important;background:#f7faf8!important;overflow:hidden!important;}' +
+            '.code-snippet__line-index{margin:0!important;padding:14px 10px!important;list-style:none!important;background:#eef4ef!important;color:#7f8f84!important;counter-reset:wcs-line!important;min-width:28px!important;}' +
+            '.code-snippet__line-index li{height:20px!important;line-height:20px!important;position:relative!important;}' +
+            '.code-snippet__line-index li::before{counter-increment:wcs-line!important;content:counter(wcs-line)!important;font-size:12px!important;display:block!important;text-align:right!important;}' +
+            'pre.code-snippet__js{margin:0!important;padding:14px 14px 14px 12px!important;flex:1!important;background:transparent!important;overflow:auto!important;}' +
+            'pre.code-snippet__js code{display:block!important;line-height:20px!important;white-space:pre!important;}' +
+            '.wcs-preview-title{font-size:26px;line-height:1.35;color:#17241b;margin:0 0 10px;font-weight:700;letter-spacing:0.01em;}' +
+            '.wcs-preview-meta{font-size:13px;color:#88958d;margin-bottom:18px;}';
+
+        return '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>' +
+            title +
+            '</title><style>' +
+            previewStyles +
+            '</style></head><body><div class="wx-shell"><div class="wx-topbar">公众号</div><div class="wx-article"><div class="wx-authorbar"><div class="wx-avatar">微</div><div class="wx-author-meta"><div class="wx-author-name">WeChatSync 预览</div><div class="wx-author-sub">今天 · 预览稿</div></div><div class="wx-follow">关注</div></div><h2 class="wcs-preview-title">' +
+            title +
+            '</h2><div class="wcs-preview-meta">公众号图文模拟效果</div>' +
+            content +
+            '</div></div></body></html>';
+    }
+
+    function wcsShowPreview(data, onConfirm) {
+        var existingModal = document.getElementById('wcs-preview-modal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        var title = escapeHtml(data.title || '未命名文章');
+        var content = data.content || '<p>暂无预览内容</p>';
+        var previewDocument = buildPreviewDocument(title, content);
+        var html = '<div class="wcs-preview-overlay" id="wcs-preview-modal">' +
+            '<div class="wcs-preview-shell">' +
+            '<div class="wcs-preview-header">' +
+            '<div class="wcs-preview-header-main">' +
+            '<div class="wcs-preview-eyebrow">公众号预览</div>' +
+            '<div class="wcs-preview-heading">发布前确认排版效果</div>' +
+            '</div>' +
+            '<button type="button" class="wcs-preview-close" data-action="close">×</button>' +
+            '</div>' +
+            '<div class="wcs-preview-body">' +
+            '<div class="wcs-preview-sidebar">' +
+            '<div class="wcs-preview-panel">' +
+            '<div class="wcs-preview-badge">WeChat Article</div>' +
+            '<h3 class="wcs-preview-panel-title">' + title + '</h3>' +
+            '<p class="wcs-preview-panel-text">这里预览的是发布前的公众号排版效果。代码块、图片和正文样式会尽量贴近实际图文展示。</p>' +
+            '<div class="wcs-preview-panel-note">确认无误后再发布，避免进草稿箱后再回头调排版。</div>' +
+            '</div>' +
+            '<div class="wcs-preview-actions wcs-preview-actions-sidebar">' +
+            '<button type="button" class="wcs-modal-btn wcs-modal-btn-secondary" data-action="close">返回修改</button>' +
+            '<button type="button" class="wcs-modal-btn wcs-modal-btn-primary" data-action="publish">确认发布</button>' +
+            '</div>' +
+            '</div>' +
+            '<div class="wcs-preview-phone">' +
+            '<div class="wcs-preview-side wcs-preview-side-left"></div>' +
+            '<div class="wcs-preview-side wcs-preview-side-left wcs-preview-side-short"></div>' +
+            '<div class="wcs-preview-side wcs-preview-side-right"></div>' +
+            '<div class="wcs-preview-notch"></div>' +
+            '<div class="wcs-preview-screen">' +
+            '<div class="wcs-preview-statusbar">' +
+            '<span>9:41</span>' +
+            '<div class="wcs-preview-status-icons">' +
+            '<span class="wcs-signal"></span>' +
+            '<span class="wcs-wifi"></span>' +
+            '<span class="wcs-battery"></span>' +
+            '</div>' +
+            '</div>' +
+            '<iframe class="wcs-preview-frame" title="公众号预览" referrerpolicy="no-referrer"></iframe>' +
+            '</div>' +
+            '</div>' +
+            '</div>' +
+            '</div>';
+
+        document.body.insertAdjacentHTML('beforeend', html);
+
+        var modal = document.getElementById('wcs-preview-modal');
+        var frame = modal.querySelector('.wcs-preview-frame');
+        if (frame) {
+            frame.srcdoc = previewDocument;
+        }
+        var buttons = modal.querySelectorAll('[data-action]');
+        for (var i = 0; i < buttons.length; i++) {
+            buttons[i].addEventListener('click', function() {
+                var action = this.getAttribute('data-action');
+                if (action === 'publish' && typeof onConfirm === 'function') {
+                    modal.remove();
+                    onConfirm();
+                    return;
+                }
+                modal.remove();
+            });
+        }
+    }
+
+    function requestPreview(config, cid, onSuccess) {
+        $.ajax({
+            url: config.previewUrl,
+            type: 'POST',
+            data: {
+                cid: cid,
+                '_': config.securityToken
+            },
+            success: function(response) {
+                var data = response;
+                if (typeof response === 'string') {
+                    try {
+                        data = JSON.parse(response);
+                    } catch (e) {
+                        wcsError('预览返回格式无效');
+                        return;
+                    }
+                }
+
+                if (!data || !data.content) {
+                    wcsError('未生成可用的预览内容');
+                    return;
+                }
+
+                onSuccess(data);
+            },
+            error: function(xhr) {
+                var errorMsg = xhr.status + ' ' + xhr.statusText;
+                try {
+                    var resp = JSON.parse(xhr.responseText);
+                    if (resp.error) {
+                        errorMsg = resp.error;
+                    }
+                } catch (e) {}
+                wcsError('预览失败：' + errorMsg);
+            }
+        });
+    }
+
     // Expose functions globally
     WeChatSync.handleAjaxProgress = handleAjaxProgress;
     WeChatSync.resetLoadingState = resetLoadingState;
@@ -219,6 +382,7 @@
     WeChatSync.wcsSuccess = wcsSuccess;
     WeChatSync.wcsError = wcsError;
     WeChatSync.wcsConfirm = wcsConfirm;
+    WeChatSync.wcsShowPreview = wcsShowPreview;
 
     /**
      * Initialize manage posts page
@@ -302,39 +466,41 @@
                     return;
                 }
 
-                wcsConfirm('确认发布到公众号吗？', function() {
-                    var progressInterval = handleAjaxProgress();
+                requestPreview(config, cid, function(preview) {
+                    wcsShowPreview(preview, function() {
+                        var progressInterval = handleAjaxProgress();
 
-                    $.ajax({
-                        url: config.actionUrl,
-                        type: 'POST',
-                        data: {
-                            cid: [cid],
-                            '_': config.securityToken
-                        },
-                        success: function(response) {
-                            clearInterval(progressInterval);
-                            $('#wcs-progress-bar').css('width', '100%');
-                            $('#wcs-current-step').text('同步完成！');
-                            setTimeout(function() {
+                        $.ajax({
+                            url: config.actionUrl,
+                            type: 'POST',
+                            data: {
+                                cid: [cid],
+                                '_': config.securityToken
+                            },
+                            success: function(response) {
+                                clearInterval(progressInterval);
+                                $('#wcs-progress-bar').css('width', '100%');
+                                $('#wcs-current-step').text('同步完成！');
+                                setTimeout(function() {
+                                    $('#wcs-loading-overlay').fadeOut();
+                                    resetLoadingState();
+                                    wcsSuccess('已成功发布到公众号');
+                                }, 800);
+                            },
+                            error: function(xhr) {
+                                clearInterval(progressInterval);
                                 $('#wcs-loading-overlay').fadeOut();
                                 resetLoadingState();
-                                wcsSuccess('已成功发布到公众号');
-                            }, 800);
-                        },
-                        error: function(xhr) {
-                            clearInterval(progressInterval);
-                            $('#wcs-loading-overlay').fadeOut();
-                            resetLoadingState();
-                            var errorMsg = xhr.status + ' ' + xhr.statusText;
-                            try {
-                                var resp = JSON.parse(xhr.responseText);
-                                if (resp.error) {
-                                    errorMsg = resp.error;
-                                }
-                            } catch(e) {}
-                            wcsError('操作失败：' + errorMsg);
-                        }
+                                var errorMsg = xhr.status + ' ' + xhr.statusText;
+                                try {
+                                    var resp = JSON.parse(xhr.responseText);
+                                    if (resp.error) {
+                                        errorMsg = resp.error;
+                                    }
+                                } catch(e) {}
+                                wcsError('操作失败：' + errorMsg);
+                            }
+                        });
                     });
                 });
             });

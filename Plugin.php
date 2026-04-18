@@ -52,6 +52,7 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
 
         // 构建 action URL
         $actionUrl = rtrim($options->siteUrl, '/') . '/action/WeChatSync_action_plugin?do=custom_action';
+        $previewUrl = rtrim($options->siteUrl, '/') . '/action/WeChatSync_action_plugin?do=preview';
 
         // 获取安全 token
         $security = Typecho_Widget::widget('Widget_Security');
@@ -60,8 +61,8 @@ class WeChatSync_Plugin implements Typecho_Plugin_Interface
 
         echo '<link rel="stylesheet" href="' . $pluginUrl . '/Assets/admin.css">';
         echo '<script src="' . $pluginUrl . '/Assets/admin.js"></script>';
-        echo '<div id="wcs-config" data-action="' . htmlspecialchars($actionUrl) . '" data-token="' . htmlspecialchars($securityToken) . '" style="display:none;"></div>';
-        echo '<script>WeChatSync.debugConfig = {actionUrl: "' . htmlspecialchars($actionUrl) . '", token: "' . htmlspecialchars($securityToken) . '"};</script>';
+        echo '<div id="wcs-config" data-action="' . htmlspecialchars($actionUrl) . '" data-preview="' . htmlspecialchars($previewUrl) . '" data-token="' . htmlspecialchars($securityToken) . '" style="display:none;"></div>';
+        echo '<script>WeChatSync.debugConfig = {actionUrl: "' . htmlspecialchars($actionUrl) . '", previewUrl: "' . htmlspecialchars($previewUrl) . '", token: "' . htmlspecialchars($securityToken) . '"};</script>';
 
         if (strpos($request->getRequestUri(), __TYPECHO_ADMIN_DIR__ . 'manage-posts.php') !== false) {
             echo '<script>WeChatSync.initManagePosts();</script>';
